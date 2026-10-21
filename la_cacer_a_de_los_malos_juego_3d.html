@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LA CACERÍA DE LOS MALOS - Prototipo 3D</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js (Motor 3D) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- FontAwesome para Iconos -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; user-select: none; }
+        #gameCanvas { width: 100%; height: 100%; display: block; }
+        .glass-panel { background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(8px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .speedometer-arc { stroke-dasharray: 283; stroke-dashoffset: 283; transition: stroke-dashoffset 0.1s ease; }
+    </style>
+</head>
+<body class="bg-slate-950 text-white select-none">
+
+    <!-- Lienzo principal del juego 3D -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- INTERFAZ HUD DEL JUEGO -->
+    <div id="hudOverlay" class="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 md:p-6">
+        
+        <!-- BARRA SUPERIOR: Info del juego, estrellas y misión -->
+        <div class="flex justify-between items-start gap-4">
+            <!-- Info del Personaje y Misión -->
+            <div class="glass-panel p-4 rounded-xl max-w-md pointer-events-auto">
+                <div class="flex items-center gap-3 mb-2">
+                    <div class="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center font-bold text-lg shadow-lg border border-blue-400">
+                        AC
+                    </div>
+                    <div>
+                        <h1 class="font-black text-lg tracking-wider text-blue-400 leading-none">ALEX CRUZ</h1>
+                        <p class="text-xs text-slate-400 font-medium">AGENTE ESPECIAL - PUERTO DORADO</p>
+                    </div>
+                </div>
+                <!-- Objetivo de la Misión -->
+                <div class="mt-3 bg-slate-900/80 p-2.5 rounded-lg border border-yellow-500/30">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-xs font-bold text-yellow-400 uppercase tracking-wider flex items-center gap-1.5">
+                            <i class="fa-solid fa-crosshairs"></i> Misión Activa
+                        </span>
+                        <span id="missionDistance" class="text-xs font-mono text-slate-300">120m</span>
+                    </div>
+                    <p id="missionDesc" class="text-sm font-semibold text-slate-100">
+                        Localiza y embiste el vehículo rojo del sospechoso hasta detenerlo.
+                    </p>
+                    <!-- Barra de Salud del Sospechoso -->
+                    <div class="mt-2">
+                        <div class="flex justify-between text-xs mb-1 font-semibold">
+                            <span class="text-red-400">Salud del Sospechoso</span>
+                            <span id="targetHealthText" class="text-red-400">100%</span>
+                        </div>
+                        <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden border border-slate-700">
+                            <div id="targetHealthBar" class="bg-gradient-to-r from-red-600 to-amber-500 h-full w-full transition-all duration-300"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Estrellas de Alerta y Estado Global -->
+            <div class="flex flex-col items-end gap-2 pointer-events-auto">
+                <div class="glass-panel px-4 py-2 rounded-xl flex items-center gap-2">
+                    <span class="text-xs font-bold uppercase text-slate-400 mr-1">Alerta:</span>
+                    <div id="starContainer" class="flex text-amber-400 text-lg gap-1">
+                        <i class="fa-solid fa-star opacity-30"></i>
+                        <i class="fa-solid fa-star opacity-30"></i>
+                        <i class="fa-solid fa-star opacity-30"></i>
+                        <i class="fa-solid fa-star opacity-30"></i>
+                        <i class="fa-solid fa-star opacity-30"></i>
+                    </div>
+                </div>
+                <div class="glass-panel px-4 py-2 rounded-xl flex items-center gap-4 text-sm font-semibold">
+                    <span class="text-emerald-400"><i class="fa-solid fa-sack-dollar mr-1"></i> $<span id="cashCount">15,000</span></span>
+                    <button id="btnControlsModal" class="bg-blue-600/80 hover:bg-blue-500 text-white text-xs px-2.5 py-1 rounded-lg transition border border-blue-400">
+                        <i class="fa-solid fa-keyboard mr-1"></i> Controles
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- BARRA INFERIOR: Minimapa, Mensajes de Acción y Velocímetro -->
+        <div class="flex justify-between items-end gap-4">
+            <!-- Minimapa Dinámico -->
+            <div class="glass-panel p-2 rounded-2xl relative overflow-hidden pointer-events-auto shadow-2xl">
+                <canvas id="minimapCanvas" width="150" height="150" class="rounded-xl bg-slate-900 border border-slate-700"></canvas>
+                <div class="absolute bottom-3 left-3 text-[10px] font-mono text-slate-400 bg-slate-950/80 px-1.5 py-0.5 rounded">
+                    PUERTO DORADO GPS
+                </div>
+            </div>
+
+            <!-- Indicador de Acción Central (Entrar/Salir Vehículo, etc.) -->
+            <div id="actionPrompt" class="hidden glass-panel px-6 py-3 rounded-xl border border-blue-500/50 text-center animate-bounce pointer-events-auto">
+                <span class="text-sm font-bold text-blue-300">Presiona <kbd class="bg-slate-800 px-2 py-1 rounded text-white border border-slate-600">E</kbd> para <span id="actionText">Entrar al Vehículo</span></span>
+            </div>
+
+            <!-- Velocímetro y Estado del Vehículo -->
+            <div class="glass-panel p-4 rounded-2xl flex items-center gap-4 pointer-events-auto min-w-[200px] justify-between">
+                <div>
+                    <div class="text-3xl font-black font-mono tracking-tight text-white leading-none">
+                        <span id="speedValue">0</span> <span class="text-xs font-normal text-slate-400">KM/H</span>
+                    </div>
+                    <div class="text-xs text-slate-400 mt-1 font-semibold flex items-center gap-2">
+                        <span>MARCHA: <strong id="gearValue" class="text-blue-400">D</strong></span>
+                        <span id="sirenIndicator" class="hidden text-red-500 animate-pulse font-bold"><i class="fa-solid fa-lightbulb"></i> SIRENA</span>
+                    </div>
+                    <!-- Barra de Nitro -->
+                    <div class="mt-2 w-28">
+                        <div class="flex justify-between text-[10px] text-cyan-400 font-bold mb-0.5">
+                            <span>NITRO</span>
+                            <span id="nitroText">100%</span>
+                        </div>
+                        <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                            <div id="nitroBar" class="bg-cyan-400 h-full w-full"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Botones Rápidos para Móvil / Interacción rápida -->
+                <div class="flex flex-col gap-1.5">
+                    <button id="btnSiren" class="bg-slate-800 hover:bg-slate-700 text-xs px-2.5 py-1.5 rounded-lg text-slate-200 border border-slate-600 flex items-center gap-1">
+                        <i class="fa-solid fa-bullhorn text-red-400"></i> Sirena <kbd class="text-[9px] bg-slate-900 px-1 rounded">F</kbd>
+                    </button>
+                    <button id="btnCamera" class="bg-slate-800 hover:bg-slate-700 text-xs px-2.5 py-1.5 rounded-lg text-slate-200 border border-slate-600 flex items-center gap-1">
+                        <i class="fa-solid fa-camera"></i> Cámara <kbd class="text-[9px] bg-slate-900 px-1 rounded">C</kbd>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE INSTRUCCIONES / CONTROLES -->
+    <div id="controlsModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50 pointer-events-auto">
+        <div class="glass-panel p-6 rounded-2xl max-w-lg w-full border border-blue-500/30 shadow-2xl">
+            <div class="flex justify-between items-center mb-4 border-b border-slate-700 pb-3">
+                <h2 class="text-xl font-black text-blue-400 flex items-center gap-2">
+                    <i class="fa-solid fa-gamepad"></i> CONTROLES DEL JUEGO
+                </h2>
+                <button id="btnCloseModal" class="text-slate-400 hover:text-white text-lg"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            
+            <div class="space-y-3 text-sm text-slate-300">
+                <div class="bg-slate-900/80 p-3 rounded-lg flex justify-between items-center border border-slate-800">
+                    <span class="font-medium"><i class="fa-solid fa-person-walking text-blue-400 w-5"></i> Movimiento / Conducción</span>
+                    <span class="font-mono bg-slate-800 px-2 py-1 rounded text-xs text-white border border-slate-700">W A S D / Flechas</span>
+                </div>
+                <div class="bg-slate-900/80 p-3 rounded-lg flex justify-between items-center border border-slate-800">
+                    <span class="font-medium"><i class="fa-solid fa-car text-blue-400 w-5"></i> Entrar / Salir del Vehículo</span>
+                    <span class="font-mono bg-slate-800 px-2 py-1 rounded text-xs text-white border border-slate-700">E</span>
+                </div>
+                <div class="bg-slate-900/80 p-3 rounded-lg flex justify-between items-center border border-slate-800">
+                    <span class="font-medium"><i class="fa-solid fa-bolt text-cyan-400 w-5"></i> Nitro (al conducir) / Sprint (A pie)</span>
+                    <span class="font-mono bg-slate-800 px-2 py-1 rounded text-xs text-white border border-slate-700">Shift Izquierdo</span>
+                </div>
+                <div class="bg-slate-900/80 p-3 rounded-lg flex justify-between items-center border border-slate-800">
+                    <span class="font-medium"><i class="fa-solid fa-hand text-amber-400 w-5"></i> Freno de Mano</span>
+                    <span class="font-mono bg-slate-800 px-2 py-1 rounded text-xs text-white border border-slate-700">Espacio</span>
+                </div>
+                <div class="bg-slate-900/80 p-3 rounded-lg flex justify-between items-center border border-slate-800">
+                    <span class="font-medium"><i class="fa-solid fa-lightbulb text-red-400 w-5"></i> Activar Sirena Policial</span>
+                    <span class="font-mono bg-slate-800 px-2 py-1 rounded text-xs text-white border border-slate-700">F</span>
+                </div>
+                <div class="bg-slate-900/80 p-3 rounded-lg flex justify-between items-center border border-slate-800">
+                    <span class="font-medium"><i class="fa-solid fa-video text-emerald-400 w-5"></i> Cambiar Cámara</span>
+                    <span class="font-mono bg-slate-800 px-2 py-1 rounded text-xs text-white border border-slate-700">C</span>
+                </div>
+            </div>
+
+            <button id="btnStartGame" class="mt-6 w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl transition shadow-lg shadow-blue-600/30 border border-blue-400">
+                ¡INICIAR CACERÍA!
+            </button>
+        </div>
+    </div>
+
+    <!-- MODAL DE VICTORIA DE MISIÓN -->
+    <div id="victoryModal" class="hidden fixed inset-0 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 z-50 pointer-events-auto">
+        <div class="glass-panel p-8 rounded-3xl max-w-md w-full border border-yellow-500/50 shadow-2xl text-center">
+            <div class="w-20 h-20 bg-yellow-500/20 text-yellow-400 rounded-full flex items-center justify-center text-4xl mx-auto mb-4 border border-yellow-400 animate-bounce">
+                <i class="fa-solid fa-trophy"></i>
+            </div>
+            <h2 class="text-2xl font-black text-yellow-400 mb-1">¡FUGITIVO CAPTURADO!</h2>
+            <p class="text-sm text-slate-300 mb-6">Has reducido con éxito el vehículo del sospechoso en Puerto Dorado.</p>
+            
+            <div class="bg-slate-900/80 p-4 rounded-xl border border-slate-800 mb-6 text-left space-y-2">
+                <div class="flex justify-between text-sm">
+                    <span class="text-slate-400">Recompensa en Efectivo:</span>
+                    <span class="font-bold text-emerald-400">+$5,000</span>
+                </div>
+                <div class="flex justify-between text-sm">
+                    <span class="text-slate-400">Reputación Policial:</span>
+                    <span class="font-bold text-blue-400">+250 XP</span>
+                </div>
+            </div>
+
+            <button id="btnRestartMission" class="w-full py-3 bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-black rounded-xl transition shadow-lg shadow-yellow-500/20">
+                SIGUIENTE MISIÓN DE PATRULLA
+            </button>
+        </div>
+    </div>
+
+    <!-- LÓGICA PRINCIPAL EN JAVASCRIPT -->
+    <script>
+        // Global Game States
+        const GAME_STATE = {
+            ON_FOOT: 'ON_FOOT',
+            DRIVING: 'DRIVING'
+        };
+
+        let currentState = GAME_STATE.DRIVING; // Comienza conduciendo para acción inmediata
+        let cameraMode = 0; // 0: 3ª Persona Vehículo, 1: Capó/Cerca, 2: Vista Genérica
+        let sirenActive = false;
+        let wantedLevel = 1;
+        let cash = 15000;
+
+        // Player & Vehicle Specs
+        const playerStats = {
+            speed: 0,
+            maxSpeed: 140,
+            acceleration: 0.6,
+            deceleration: 0.3,
+            steering: 0.04,
+            nitro: 100,
+            isNitroActive: false,
+            position: new THREE.Vector3(0, 0, 0),
+            rotation: 0,
+            health: 100
+        };
+
+        const targetStats = {
+            position: new THREE.Vector3(120, 0, -180),
+            rotation: 0,
+            speed: 45,
+            health: 100,
+            isCaptured: false
+        };
+
+        // Inputs State
+        const keys = {
+            w: false, a: false, s: false, d: false,
+            space: false, shift: false, e: false, f: false, c: false
+        };
+
+        class AudioSynth {
+            constructor() {
+                this.ctx = null;
+                this.engineOsc = null;
+                this.sirenOsc = null;
+                this.isInitialized = false;
+            }
+
+            init() {
+                if (this.isInitialized) return;
+                try {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                    
+                    // Oscilador de Motor
+                    this.engineOsc = this.ctx.createOscillator();
+                    this.engineGain = this.ctx.createGain();
+                    this.engineOsc.type = 'sawtooth';
+                    this.engineOsc.frequency.setValueAtTime(40, this.ctx.currentTime);
+                    this.engineGain.gain.setValueAtTime(0.05, this.ctx.currentTime);
+                    this.engineOsc.connect(this.engineGain);
+                    this.engineGain.connect(this.ctx.destination);
+                    this.engineOsc.start();
+
+                    this.isInitialized = true;
+                } catch(e) {
+                    console.log("Audio not allowed yet");
+                }
+            }
+
+            updateEngine(speed) {
+                if (!this.isInitialized || !this.engineOsc) return;
+                const freq = 40 + (Math.abs(speed) * 2.2);
+                this.engineOsc.frequency.setTargetAtTime(freq, this.ctx.currentTime, 0.1);
+            }
+
+            playCrash() {
+                if (!this.isInitialized) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(100, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(20, this.ctx.currentTime + 0.3);
+                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.3);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.3);
+            }
+
+            toggleSiren(active) {
+                if (!this.isInitialized) return;
+                if (active) {
+                    if (!this.sirenOsc) {
+                        this.sirenOsc = this.ctx.createOscillator();
+                        this.sirenGain = this.ctx.createGain();
+                        this.sirenOsc.type = 'sine';
+                        this.sirenGain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+                        
+                        // LFO para efecto wail de sirena policial
+                        this.sirenLfo = this.ctx.createOscillator();
+                        this.sirenLfo.frequency.setValueAtTime(2, this.ctx.currentTime);
+                        const lfoGain = this.ctx.createGain();
+                        lfoGain.gain.setValueAtTime(300, this.ctx.currentTime);
+                        
+                        this.sirenOsc.frequency.setValueAtTime(600, this.ctx.currentTime);
+                        this.sirenLfo.connect(lfoGain);
+                        lfoGain.connect(this.sirenOsc.frequency);
+
+                        this.sirenOsc.connect(this.sirenGain);
+                        this.sirenGain.connect(this.ctx.destination);
+                        this.sirenOsc.start();
+                        this.sirenLfo.start();
+                    }
+                } else {
+                    if (this.sirenOsc) {
+                        this.sirenOsc.stop();
+                        this.sirenLfo.stop();
+                        this.sirenOsc = null;
+                    }
+                }
+            }
+        }
+
+        const audio = new AudioSynth();
+
+        let scene, camera, renderer;
+        let playerVehicleGroup, suspectVehicleGroup, characterMesh;
+        let cityBuildings = [];
+        let roadColliders = [];
+
+        function initThreeJS() {
+            const canvas = document.getElementById('gameCanvas');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0f1d);
+            scene.fog = new THREE.FogExp2(0x0a0f1d, 0.0035);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+            renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+            // Luces del entorno
+            const ambientLight = new THREE.AmbientLight(0x90afdf, 0.6);
+            scene.add(ambientLight);
+
+            const sunLight = new THREE.DirectionalLight(0xfff5ea, 1.2);
+            sunLight.position.set(150, 200, 100);
+            sunLight.castShadow = true;
+            sunLight.shadow.mapSize.width = 2048;
+            sunLight.shadow.mapSize.height = 2048;
+            sunLight.shadow.camera.near = 0.5;
+            sunLight.shadow.camera.far = 500;
+            const d = 150;
+            sunLight.shadow.camera.left = -d;
+            sunLight.shadow.camera.right = d;
+            sunLight.shadow.camera.top = d;
+            sunLight.shadow.camera.bottom = -d;
+            scene.add(sunLight);
+
+            // Suelo General de Puerto Dorado
+            const groundGeo = new THREE.PlaneGeometry(1000, 1000);
+            const groundMat = new THREE.MeshStandardMaterial({ color: 0x111625, roughness: 0.8 });
+            const ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            buildCityGrid();
+            createPlayerVehicle();
+            createSuspectVehicle();
+            createPlayerCharacter();
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function buildCityGrid() {
+            const citySize = 600;
+            const blockSpacing = 60;
+            const roadWidth = 16;
+
+            // Materiales reutilizables
+            const roadMat = new THREE.MeshStandardMaterial({ color: 0x1e2430, roughness: 0.5 });
+            const lineMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
+            const buildingMats = [
+                new THREE.MeshStandardMaterial({ color: 0x2d3748, roughness: 0.3, metalness: 0.2 }),
+                new THREE.MeshStandardMaterial({ color: 0x1a202c, roughness: 0.2, metalness: 0.5 }),
+                new THREE.MeshStandardMaterial({ color: 0x4a5568, roughness: 0.4 })
+            ];
+            const windowMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+
+            // Crear cuadrícula de carreteras y manzanas
+            for (let x = -citySize/2; x <= citySize/2; x += blockSpacing) {
+                // Carreteras Norte-Sur
+                const roadGeo = new THREE.PlaneGeometry(roadWidth, citySize);
+                const roadMesh = new THREE.Mesh(roadGeo, roadMat);
+                roadMesh.rotation.x = -Math.PI / 2;
+                roadMesh.position.set(x, 0.01, 0);
+                roadMesh.receiveShadow = true;
+                scene.add(roadMesh);
+
+                // Línea divisoria de carril
+                const lineGeo = new THREE.PlaneGeometry(0.4, citySize);
+                const lineMesh = new THREE.Mesh(lineGeo, lineMat);
+                lineMesh.rotation.x = -Math.PI / 2;
+                lineMesh.position.set(x, 0.02, 0);
+                scene.add(lineMesh);
+            }
+
+            for (let z = -citySize/2; z <= citySize/2; z += blockSpacing) {
+                // Carreteras Este-Oeste
+                const roadGeo = new THREE.PlaneGeometry(citySize, roadWidth);
+                const roadMesh = new THREE.Mesh(roadGeo, roadMat);
+                roadMesh.rotation.x = -Math.PI / 2;
+                roadMesh.position.set(0, 0.015, z);
+                roadMesh.receiveShadow = true;
+                scene.add(roadMesh);
+            }
+
+            // Generar Rascacielos y Edificios
+            for (let x = -citySize/2 + blockSpacing/2; x < citySize/2; x += blockSpacing) {
+                for (let z = -citySize/2 + blockSpacing/2; z < citySize/2; z += blockSpacing) {
+                    if (Math.abs(x) < 30 && Math.abs(z) < 30) continue; // Plaza Central Libre
+
+                    const h = 25 + Math.random() * 65;
+                    const bGeo = new THREE.BoxGeometry(blockSpacing - roadWidth - 4, h, blockSpacing - roadWidth - 4);
+                    const bMat = buildingMats[Math.floor(Math.random() * buildingMats.length)];
+                    const building = new THREE.Mesh(bGeo, bMat);
+                    building.position.set(x, h/2, z);
+                    building.castShadow = true;
+                    building.receiveShadow = true;
+                    scene.add(building);
+                    cityBuildings.push(building);
+
+                    // Ventanas brillantes decorativas
+                    if (Math.random() > 0.3) {
+                        const winGeo = new THREE.BoxGeometry(blockSpacing - roadWidth - 3.8, h * 0.8, 0.2);
+                        const winMesh = new THREE.Mesh(winGeo, windowMat);
+                        winMesh.position.set(x, h/2, z + (blockSpacing - roadWidth - 4)/2 + 0.1);
+                        scene.add(winMesh);
+                    }
+                }
+            }
+
+            // Zona Marítima del Puerto (Agua)
+            const waterGeo = new THREE.PlaneGeometry(600, 200);
+            const waterMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.1, metalness: 0.8, transparent: true, opacity: 0.8 });
+            const water = new THREE.Mesh(waterGeo, waterMat);
+            water.rotation.x = -Math.PI / 2;
+            water.position.set(0, -0.2, 350);
+            scene.add(water);
+        }
+
+        function createPlayerVehicle() {
+            playerVehicleGroup = new THREE.Group();
+
+            // Carrocería Principal
+            const bodyGeo = new THREE.BoxGeometry(2.2, 1.1, 4.6);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.2, metalness: 0.8 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 0.8;
+            body.castShadow = true;
+            playerVehicleGroup.add(body);
+
+            // Techo Blanco Policial
+            const roofGeo = new THREE.BoxGeometry(1.9, 0.8, 2.3);
+            const roofMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.3 });
+            const roof = new THREE.Mesh(roofGeo, roofMat);
+            roof.position.set(0, 1.6, -0.2);
+            roof.castShadow = true;
+            playerVehicleGroup.add(roof);
+
+            // Cristales / Ventanas
+            const glassGeo = new THREE.BoxGeometry(1.82, 0.7, 2.2);
+            const glassMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.1, metalness: 0.9, transparent: true, opacity: 0.7 });
+            const glass = new THREE.Mesh(glassGeo, glassMat);
+            glass.position.set(0, 1.6, -0.2);
+            playerVehicleGroup.add(glass);
+
+            // Luces de Sirena Policial (Rojo y Azul)
+            const sirenBarGeo = new THREE.BoxGeometry(1.4, 0.15, 0.4);
+            const sirenBarMat = new THREE.MeshStandardMaterial({ color: 0x334155 });
+            const sirenBar = new THREE.Mesh(sirenBarGeo, sirenBarMat);
+            sirenBar.position.set(0, 2.1, -0.2);
+            playerVehicleGroup.add(sirenBar);
+
+            const redLightGeo = new THREE.BoxGeometry(0.5, 0.2, 0.3);
+            const redLightMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+            const redLight = new THREE.Mesh(redLightGeo, redLightMat);
+            redLight.position.set(-0.4, 2.15, -0.2);
+            playerVehicleGroup.add(redLight);
+
+            const blueLightGeo = new THREE.BoxGeometry(0.5, 0.2, 0.3);
+            const blueLightMat = new THREE.MeshBasicMaterial({ color: 0x3b82f6 });
+            const blueLight = new THREE.Mesh(blueLightGeo, blueLightMat);
+            blueLight.position.set(0.4, 2.15, -0.2);
+            playerVehicleGroup.add(blueLight);
+
+            // Ruedas
+            const wheelGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.35, 16);
+            const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
+            const wheelPositions = [
+                [-1.1, 0.45, 1.4], [1.1, 0.45, 1.4],
+                [-1.1, 0.45, -1.4], [1.1, 0.45, -1.4]
+            ];
+
+            wheelPositions.forEach(pos => {
+                const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+                wheel.rotation.z = Math.PI / 2;
+                wheel.position.set(...pos);
+                wheel.castShadow = true;
+                playerVehicleGroup.add(wheel);
+            });
+
+            playerVehicleGroup.position.set(0, 0, 0);
+            scene.add(playerVehicleGroup);
+        }
+
+        function createSuspectVehicle() {
+            suspectVehicleGroup = new THREE.Group();
+
+            // Carrocería Deportiva Roja
+            const bodyGeo = new THREE.BoxGeometry(2.1, 0.9, 4.4);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.2, metalness: 0.6 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 0.7;
+            body.castShadow = true;
+            suspectVehicleGroup.add(body);
+
+            // Cristales Ahumados
+            const glassGeo = new THREE.BoxGeometry(1.8, 0.65, 2.0);
+            const glassMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.1, metalness: 0.9 });
+            const glass = new THREE.Mesh(glassGeo, glassMat);
+            glass.position.set(0, 1.3, -0.1);
+            suspectVehicleGroup.add(glass);
+
+            // Ruedas
+            const wheelGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 16);
+            const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+            const wheelPositions = [
+                [-1.0, 0.4, 1.3], [1.0, 0.4, 1.3],
+                [-1.0, 0.4, -1.3], [1.0, 0.4, -1.3]
+            ];
+
+            wheelPositions.forEach(pos => {
+                const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+                wheel.rotation.z = Math.PI / 2;
+                wheel.position.set(...pos);
+                wheel.castShadow = true;
+                suspectVehicleGroup.add(wheel);
+            });
+
+            suspectVehicleGroup.position.copy(targetStats.position);
+            scene.add(suspectVehicleGroup);
+        }
+
+        function createPlayerCharacter() {
+            characterMesh = new THREE.Group();
+
+            // Cabeza
+            const headGeo = new THREE.SphereGeometry(0.3, 16, 16);
+            const headMat = new THREE.MeshStandardMaterial({ color: 0xfbcfe8 });
+            const head = new THREE.Mesh(headGeo, headMat);
+            head.position.y = 1.6;
+            characterMesh.add(head);
+
+            // Torso (Traje Policial Azul)
+            const torsoGeo = new THREE.BoxGeometry(0.6, 0.8, 0.35);
+            const torsoMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a });
+            const torso = new THREE.Mesh(torsoGeo, torsoMat);
+            torso.position.y = 1.0;
+            torso.castShadow = true;
+            characterMesh.add(torso);
+
+            // Extremidades
+            const legGeo = new THREE.BoxGeometry(0.22, 0.7, 0.25);
+            const legMat = new THREE.MeshStandardMaterial({ color: 0x0f172a });
+            const legL = new THREE.Mesh(legGeo, legMat);
+            legL.position.set(-0.15, 0.35, 0);
+            const legR = new THREE.Mesh(legGeo, legMat);
+            legR.position.set(0.15, 0.35, 0);
+            characterMesh.add(legL);
+            characterMesh.add(legR);
+
+            characterMesh.position.set(3, 0, 0);
+            characterMesh.visible = false; // Oculto mientras está conduciendo
+            scene.add(characterMesh);
+        }
+
+        function setupEventListeners() {
+            window.addEventListener('keydown', (e) => {
+                audio.init(); // Inicializar contexto de audio con la primera tecla
+                switch (e.key.toLowerCase()) {
+                    case 'w': case 'arrowup': keys.w = true; break;
+                    case 's': case 'arrowdown': keys.s = true; break;
+                    case 'a': case 'arrowleft': keys.a = true; break;
+                    case 'd': case 'arrowright': keys.d = true; break;
+                    case ' ': keys.space = true; break;
+                    case 'shift': keys.shift = true; break;
+                    case 'e': 
+                        toggleEnterExitVehicle();
+                        break;
+                    case 'f': 
+                        sirenActive = !sirenActive;
+                        audio.toggleSiren(sirenActive);
+                        document.getElementById('sirenIndicator').classList.toggle('hidden', !sirenActive);
+                        break;
+                    case 'c':
+                        cameraMode = (cameraMode + 1) % 2;
+                        break;
+                }
+            });
+
+            window.addEventListener('keyup', (e) => {
+                switch (e.key.toLowerCase()) {
+                    case 'w': case 'arrowup': keys.w = false; break;
+                    case 's': case 'arrowdown': keys.s = false; break;
+                    case 'a': case 'arrowleft': keys.a = false; break;
+                    case 'd': case 'arrowright': keys.d = false; break;
+                    case ' ': keys.space = false; break;
+                    case 'shift': keys.shift = false; break;
+                }
+            });
+
+            // UI Buttons
+            document.getElementById('btnSiren').addEventListener('click', () => {
+                audio.init();
+                sirenActive = !sirenActive;
+                audio.toggleSiren(sirenActive);
+                document.getElementById('sirenIndicator').classList.toggle('hidden', !sirenActive);
+            });
+
+            document.getElementById('btnCamera').addEventListener('click', () => {
+                cameraMode = (cameraMode + 1) % 2;
+            });
+
+            document.getElementById('btnControlsModal').addEventListener('click', () => {
+                document.getElementById('controlsModal').classList.remove('hidden');
+            });
+
+            document.getElementById('btnCloseModal').addEventListener('click', () => {
+                document.getElementById('controlsModal').classList.add('hidden');
+            });
+
+            document.getElementById('btnStartGame').addEventListener('click', () => {
+                audio.init();
+                document.getElementById('controlsModal').classList.add('hidden');
+            });
+
+            document.getElementById('btnRestartMission').addEventListener('click', () => {
+                resetMission();
+            });
+        }
+
+        function toggleEnterExitVehicle() {
+            if (currentState === GAME_STATE.DRIVING) {
+                // Salir del coche
+                currentState = GAME_STATE.ON_FOOT;
+                characterMesh.position.copy(playerVehicleGroup.position).add(new THREE.Vector3(2.5, 0, 0));
+                characterMesh.visible = true;
+                playerStats.speed = 0;
+            } else if (currentState === GAME_STATE.ON_FOOT) {
+                // Entrar al coche si está cerca
+                const dist = characterMesh.position.distanceTo(playerVehicleGroup.position);
+                if (dist < 5.0) {
+                    currentState = GAME_STATE.DRIVING;
+                    characterMesh.visible = false;
+                }
+            }
+        }
+
+        function updatePhysics(delta) {
+            if (currentState === GAME_STATE.DRIVING) {
+                // Control Nitro
+                let currentMaxSpeed = playerStats.maxSpeed;
+                if (keys.shift && playerStats.nitro > 0 && keys.w) {
+                    currentMaxSpeed *= 1.4;
+                    playerStats.nitro = Math.max(0, playerStats.nitro - delta * 30);
+                    playerStats.isNitroActive = true;
+                } else {
+                    playerStats.isNitroActive = false;
+                    playerStats.nitro = Math.min(100, playerStats.nitro + delta * 10);
+                }
+
+                // Aceleración y Frenado
+                if (keys.w) {
+                    playerStats.speed = Math.min(currentMaxSpeed, playerStats.speed + playerStats.acceleration);
+                } else if (keys.s) {
+                    playerStats.speed = Math.max(-30, playerStats.speed - playerStats.deceleration * 1.5);
+                } else {
+                    // Fricción
+                    if (playerStats.speed > 0) playerStats.speed = Math.max(0, playerStats.speed - playerStats.deceleration);
+                    if (playerStats.speed < 0) playerStats.speed = Math.min(0, playerStats.speed + playerStats.deceleration);
+                }
+
+                if (keys.space) {
+                    playerStats.speed *= 0.95; // Freno de mano
+                }
+
+                // Dirección
+                if (Math.abs(playerStats.speed) > 1) {
+                    const dir = playerStats.speed > 0 ? 1 : -1;
+                    if (keys.a) playerStats.rotation += playerStats.steering * dir;
+                    if (keys.d) playerStats.rotation -= playerStats.steering * dir;
+                }
+
+                // Actualizar Posición
+                playerVehicleGroup.rotation.y = playerStats.rotation;
+                playerVehicleGroup.translateZ(-playerStats.speed * delta * 0.4);
+                playerStats.position.copy(playerVehicleGroup.position);
+
+                audio.updateEngine(playerStats.speed);
+
+            } else if (currentState === GAME_STATE.ON_FOOT) {
+                // Movimiento Alex Cruz a pie
+                const moveSpeed = keys.shift ? 12 : 6;
+                if (keys.w) characterMesh.translateZ(-moveSpeed * delta);
+                if (keys.s) characterMesh.translateZ(moveSpeed * delta);
+                if (keys.a) characterMesh.rotation.y += 3.0 * delta;
+                if (keys.d) characterMesh.rotation.y -= 3.0 * delta;
+
+                playerStats.position.copy(characterMesh.position);
+            }
+
+            // IA Vehículo Sospechoso (Escape dinámico)
+            if (!targetStats.isCaptured) {
+                const targetPos = suspectVehicleGroup.position;
+                
+                // Escapar en dirección opuesta al jugador
+                const escapeDir = new THREE.Vector3().subVectors(targetPos, playerStats.position).normalize();
+                targetStats.rotation = Math.atan2(escapeDir.x, escapeDir.z);
+                suspectVehicleGroup.rotation.y = targetStats.rotation;
+
+                // Mover Sospechoso
+                suspectVehicleGroup.translateZ(targetStats.speed * delta * 0.35);
+
+                // Mantener dentro de los límites de la ciudad
+                if (Math.abs(targetPos.x) > 260 || Math.abs(targetPos.z) > 260) {
+                    targetPos.set(0, 0, -100);
+                }
+
+                // Detección de Colisión (Embautar al sospechoso)
+                const distToPlayer = playerVehicleGroup.position.distanceTo(suspectVehicleGroup.position);
+                if (distToPlayer < 3.2 && Math.abs(playerStats.speed) > 15) {
+                    targetStats.health -= Math.floor(Math.abs(playerStats.speed) * 0.25);
+                    audio.playCrash();
+
+                    // Rebote por impacto
+                    suspectVehicleGroup.position.add(playerVehicleGroup.getWorldDirection(new THREE.Vector3()).multiplyScalar(2));
+
+                    if (targetStats.health <= 0) {
+                        targetStats.health = 0;
+                        targetStats.isCaptured = true;
+                        showVictoryModal();
+                    }
+                }
+            }
+
+            // Actualizar Cámara
+            updateCamera();
+        }
+
+        function updateCamera() {
+            let targetObj = currentState === GAME_STATE.DRIVING ? playerVehicleGroup : characterMesh;
+
+            if (cameraMode === 0) {
+                // Cámara estándar 3ª Persona
+                const offset = new THREE.Vector3(0, 3.5, 8.5);
+                offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), targetObj.rotation.y);
+                const camPos = targetObj.position.clone().add(offset);
+                camera.position.lerp(camPos, 0.1);
+                camera.lookAt(targetObj.position.clone().add(new THREE.Vector3(0, 1, 0)));
+            } else {
+                // Cámara de Capó / De Cerca
+                const offset = new THREE.Vector3(0, 1.8, 1.0);
+                offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), targetObj.rotation.y);
+                const camPos = targetObj.position.clone().add(offset);
+                camera.position.copy(camPos);
+                
+                const lookAtPos = targetObj.position.clone().add(
+                    new THREE.Vector3(0, 1.2, -10).applyAxisAngle(new THREE.Vector3(0, 1, 0), targetObj.rotation.y)
+                );
+                camera.lookAt(lookAtPos);
+            }
+        }
+
+        function updateHUD() {
+            // Velocidad
+            document.getElementById('speedValue').innerText = Math.round(Math.abs(playerStats.speed));
+            
+            // Marcha
+            let gear = 'D';
+            if (playerStats.speed < -1) gear = 'R';
+            else if (Math.abs(playerStats.speed) < 2) gear = 'N';
+            document.getElementById('gearValue').innerText = gear;
+
+            // Barra de Nitro
+            document.getElementById('nitroBar').style.width = playerStats.nitro + '%';
+            document.getElementById('nitroText').innerText = Math.round(playerStats.nitro) + '%';
+
+            // Salud del Sospechoso
+            document.getElementById('targetHealthBar').style.width = targetStats.health + '%';
+            document.getElementById('targetHealthText').innerText = targetStats.health + '%';
+
+            // Distancia a la misión
+            const dist = Math.round(playerStats.position.distanceTo(suspectVehicleGroup.position));
+            document.getElementById('missionDistance').innerText = dist + 'm';
+
+            // Prompt de interacción de entrar/salir
+            const actionPrompt = document.getElementById('actionPrompt');
+            if (currentState === GAME_STATE.ON_FOOT) {
+                const distToCar = characterMesh.position.distanceTo(playerVehicleGroup.position);
+                if (distToCar < 5.0) {
+                    actionPrompt.classList.remove('hidden');
+                    document.getElementById('actionText').innerText = "Entrar al Vehículo";
+                } else {
+                    actionPrompt.classList.add('hidden');
+                }
+            } else {
+                actionPrompt.classList.add('hidden');
+            }
+
+            // Renderizar Minimapa GPS
+            renderMinimap();
+        }
+
+        function renderMinimap() {
+            const canvas = document.getElementById('minimapCanvas');
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width;
+            const h = canvas.height;
+
+            ctx.clearRect(0, 0, w, h);
+
+            // Fondo GPS
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, w, h);
+
+            const mapScale = 0.35;
+            const cx = w / 2;
+            const cy = h / 2;
+
+            // Dibujar Marcador Jugador (Azul)
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.fillStyle = '#38bdf8';
+            ctx.beginPath();
+            ctx.arc(0, 0, 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            ctx.restore();
+
+            // Dibujar Marcador Sospechoso (Rojo)
+            const relX = (suspectVehicleGroup.position.x - playerStats.position.x) * mapScale;
+            const relZ = (suspectVehicleGroup.position.z - playerStats.position.z) * mapScale;
+
+            if (Math.abs(relX) < w/2 && Math.abs(relZ) < h/2) {
+                ctx.save();
+                ctx.translate(cx + relX, cy + relZ);
+                ctx.fillStyle = '#ef4444';
+                ctx.beginPath();
+                ctx.arc(0, 0, 6, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        function showVictoryModal() {
+            document.getElementById('victoryModal').classList.remove('hidden');
+            cash += 5000;
+            document.getElementById('cashCount').innerText = cash.toLocaleString();
+        }
+
+        function resetMission() {
+            targetStats.health = 100;
+            targetStats.isCaptured = false;
+            targetStats.position.set(100, 0, -150);
+            suspectVehicleGroup.position.copy(targetStats.position);
+            document.getElementById('victoryModal').classList.add('hidden');
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        let clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+
+            updatePhysics(delta);
+            updateHUD();
+
+            renderer.render(scene, camera);
+        }
+
+        window.onload = () => {
+            initThreeJS();
+            setupEventListeners();
+            animate();
+        };
+    </script>
+</body>
+</html>
